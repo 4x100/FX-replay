@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 // ============================================
 // 📊 INDICATOR TYPES & INTERFACES
 // ============================================
-export type IndicatorType = 'SMA' | 'EMA' | 'RSI' | 'MACD' | 'BBANDS';
+export type IndicatorType = 'SMA' | 'EMA' | 'RSI' | 'MACD';
 
 export interface IndicatorConfig {
     id: string;
@@ -19,10 +19,6 @@ export interface IndicatorConfig {
     fastPeriod?: number;
     slowPeriod?: number;
     signalPeriod?: number;
-    
-    // Bollinger Bands specific
-    bbPeriod?: number;
-    stdDev?: number;
 }
 
 interface IndicatorPanelProps {
@@ -37,24 +33,21 @@ const DEFAULT_CONFIGS: Record<IndicatorType, Partial<IndicatorConfig>> = {
     SMA: { period: 20, color: '#3b82f6', width: 2 },
     EMA: { period: 12, color: '#10b981', width: 2 },
     RSI: { period: 14, color: '#f59e0b', width: 2 },
-    MACD: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, color: '#8b5cf6', width: 2 },
-    BBANDS: { bbPeriod: 20, stdDev: 2, color: '#ec4899', width: 2 }
+    MACD: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, color: '#8b5cf6', width: 2 }
 };
 
 const INDICATOR_DESCRIPTIONS: Record<IndicatorType, string> = {
     SMA: 'Simple Moving Average - ค่าเฉลี่ยราคา',
     EMA: 'Exponential Moving Average - ถ่วงน้ำหนักให้แท่งล่าสุด',
     RSI: 'Relative Strength Index - วัดโมเมนตัม 0-100',
-    MACD: 'Momentum oscillator - ความเร็ว + ทิศทาง',
-    BBANDS: 'Bollinger Bands - ช่วงแกว่งของราคา'
+    MACD: 'Momentum oscillator - ความเร็ว + ทิศทาง'
 };
 
 const INDICATOR_CHART_TYPE: Record<IndicatorType, 'main' | 'sub'> = {
     SMA: 'main',
     EMA: 'main',
     RSI: 'sub',
-    MACD: 'sub',
-    BBANDS: 'main'
+    MACD: 'sub'
 };
 
 // ============================================
@@ -288,8 +281,6 @@ const IndicatorRow: React.FC<IndicatorRowProps> = ({
                 <p className="text-xs text-slate-400">
                     {indicator.type === 'MACD'
                         ? `${indicator.fastPeriod}-${indicator.slowPeriod}-${indicator.signalPeriod}`
-                        : indicator.type === 'BBANDS'
-                        ? `Period ${indicator.bbPeriod}, StdDev ${indicator.stdDev}`
                         : `Period ${indicator.period}`}
                 </p>
             </div>
@@ -385,37 +376,6 @@ const IndicatorEditor: React.FC<IndicatorEditorProps> = ({
                                 onChange={(e) => onUpdate({ signalPeriod: parseInt(e.target.value) || 9 })}
                                 min="1"
                                 max="50"
-                                className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* Bollinger Bands Settings */}
-            {indicator.type === 'BBANDS' && (
-                <>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 block mb-1">Period</label>
-                            <input
-                                type="number"
-                                value={indicator.bbPeriod || 20}
-                                onChange={(e) => onUpdate({ bbPeriod: parseInt(e.target.value) || 20 })}
-                                min="2"
-                                max="100"
-                                className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 block mb-1">Std Dev</label>
-                            <input
-                                type="number"
-                                value={indicator.stdDev || 2}
-                                onChange={(e) => onUpdate({ stdDev: parseFloat(e.target.value) || 2 })}
-                                min="0.5"
-                                max="5"
-                                step="0.5"
                                 className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
