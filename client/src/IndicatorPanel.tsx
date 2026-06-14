@@ -238,7 +238,7 @@ interface IndicatorRowProps {
     onUpdate: (updates: Partial<IndicatorConfig>) => void;
 }
 
-const IndicatorRow: React.FC<IndicatorRowProps> = ({
+export const IndicatorRow: React.FC<IndicatorRowProps> = ({
     indicator,
     isEditing,
     onToggle,

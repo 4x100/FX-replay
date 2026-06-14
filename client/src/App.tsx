@@ -6,7 +6,7 @@ import LoginPage from './page/LoginPage';
 import RegisterPage from './page/RegisterPage';
 import DashboardPage from './page/DashboardPage';
 import SessionsPage from './page/SessionsPage';
-import TradingPage from './page/TradingPage';
+import TradingPage from './trading/TradingPage';
 import HistoryPage from './page/HistoryPage';
 
 // 🌟 นำเข้า MainLayout (เช็ค Path โฟลเดอร์ให้ตรงกับที่คุณสร้างไว้นะครับ)
