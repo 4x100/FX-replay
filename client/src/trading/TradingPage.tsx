@@ -3,14 +3,14 @@ import { useParams } from 'react-router-dom';
 import { createChart, ColorType, LineStyle } from 'lightweight-charts';
 import type { ISeriesApi, IPriceLine, IChartApi } from 'lightweight-charts';
 
-import { useChartData }      from './hooks/useChartData';
+import { useChartData } from './hooks/useChartData';
 import { useReplayControls } from './hooks/useReplayControls';
-import { usePositions }      from './hooks/usePositions';
+import { usePositions } from './hooks/usePositions';
 import { useIndicators } from './hooks/useIndicators';
-import { TopBar }            from './components/TopBar';
-import { ChartContainer }    from './components/ChartContainer';
-import { TradePanel }        from './components/TradePanel';
-import { OrderBar }          from './components/OrderBar';
+import { TopBar } from './components/TopBar';
+import { ChartContainer } from './components/ChartContainer';
+import { TradePanel } from './components/TradePanel';
+import { OrderBar } from './components/OrderBar';
 import type { PriceLinesMap } from './types';
 
 export default function TradingPage() {
@@ -19,16 +19,16 @@ export default function TradingPage() {
 
     // ─── Refs ────────────────────────────────────────────────────────────────
     const chartContainerRef = useRef<HTMLDivElement>(null);
-    const chartRef          = useRef<IChartApi | null>(null);           // ← ใหม่
-    const seriesRef         = useRef<ISeriesApi<'Candlestick'> | null>(null);
-    const priceLinesRef     = useRef<PriceLinesMap>(new Map());
+    const chartRef = useRef<IChartApi | null>(null);           // ← ใหม่
+    const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    const priceLinesRef = useRef<PriceLinesMap>(new Map());
 
     // ─── Shared State ────────────────────────────────────────────────────────
     const [currentPrice, setCurrentPrice] = useState(0);
     const [currentIndex, setCurrentIndex] = useState(100);
-    const [lotSize,    setLotSize]    = useState(0.1);
-    const [tpOffset,   setTpOffset]   = useState(0);
-    const [slOffset,   setSlOffset]   = useState(0);
+    const [lotSize, setLotSize] = useState(0.1);
+    const [tpOffset, setTpOffset] = useState(0);
+    const [slOffset, setSlOffset] = useState(0);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     // ─── Hooks ───────────────────────────────────────────────────────────────
@@ -64,7 +64,14 @@ export default function TradingPage() {
             grid: { vertLines: { color: '#1e222d', style: 1 }, horzLines: { color: '#1e222d', style: 1 } },
             width: container.clientWidth,
             height: container.clientHeight,
-            timeScale: { timeVisible: true, secondsVisible: false },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+                // 🌟 [แก้ไขจุดนี้] เพื่อความยืดหยุ่นในการ Backtest
+                rightOffset: 15,          // 👈 เว้นช่องว่างขวาไว้ 15 แท่งเทียน จะได้ไม่ชิดขอบจนอึดอัดมองไม่เห็น
+                fixLeftEdge: false,
+                fixRightEdge: false,      // 👈 ปิดการล็อกขอบขวาถาวร ไม่ให้มันฝืนมือตอนเราลากกราฟ
+            },
         });
 
         chartRef.current = chart;  // ← สำคัญ: ให้ useIndicators เข้าถึงกราฟหลักได้
@@ -101,7 +108,7 @@ export default function TradingPage() {
             ro.disconnect();
             chart.remove();
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allData]);
 
     useEffect(() => {
@@ -167,9 +174,9 @@ export default function TradingPage() {
             />
 
             <OrderBar
-                lotSize={lotSize}    onLotSizeChange={setLotSize}
-                tpOffset={tpOffset}  onTpOffsetChange={setTpOffset}
-                slOffset={slOffset}  onSlOffsetChange={setSlOffset}
+                lotSize={lotSize} onLotSizeChange={setLotSize}
+                tpOffset={tpOffset} onTpOffsetChange={setTpOffset}
+                slOffset={slOffset} onSlOffsetChange={setSlOffset}
                 balance={positions.balance}
                 floatingPnL={positions.totalFloatingPnL}
                 isPanelOpen={isPanelOpen}
