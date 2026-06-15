@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv" // เพิ่มเครื่องมือแปลงตัวเลข
+	"os" // 🌟 เพิ่ม os สำหรับอ่านตัวแปร Environment (Cloud)
+	"strconv"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -32,7 +33,7 @@ type BacktestSession struct {
 	AssetName       string    `gorm:"column:asset_name;not null" json:"asset_name"`
 	StartingBalance float64   `gorm:"column:starting_balance;not null" json:"starting_balance"`
 	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	StartDate       string    `gorm:"column:start_date" json:"start_date"` // 🌟 เพิ่มบรรทัดนี้
+	StartDate       string    `gorm:"column:start_date" json:"start_date"`
 }
 
 func (BacktestSession) TableName() string { return "backtest_session" }
@@ -58,18 +59,15 @@ type TradeHistory struct {
 	EntryPrice float64  `gorm:"column:entry_price" json:"entry_price"`
 	ClosePrice *float64 `gorm:"column:close_price" json:"close_price"`
 	PnL        *float64 `gorm:"column:pnl" json:"pnl"`
-	OpenTime   string   `gorm:"column:open_time" json:"open_time"` // 🌟 แก้ตรงนี้เป็น string ให้ตรงกับ Database!
+	OpenTime   string   `gorm:"column:open_time" json:"open_time"`
 	TpPrice    *float64 `gorm:"column:tp_price" json:"tp_price"`
 	SlPrice    *float64 `gorm:"column:sl_price" json:"sl_price"`
 }
+
 func (TradeHistory) TableName() string { return "trade_history" }
 
 var DB *gorm.DB
 
-
-// ==========================================
-// Struct สำหรับหน้า History (ดึงข้อมูล JOIN ข้ามตาราง)
-// ==========================================
 // ==========================================
 // Struct สำหรับหน้า History (ดึงข้อมูล JOIN ข้ามตาราง)
 // ==========================================
@@ -80,14 +78,23 @@ type TradeHistoryResponse struct {
 	Action      string  `json:"action" gorm:"column:action"`
 	EntryPrice  float64 `json:"entry_price" gorm:"column:entry_price"`
 	ExitPrice   float64 `json:"exit_price" gorm:"column:exit_price"`
-	PnL         float64 `json:"pnl" gorm:"column:pnl"` // 🌟 ตัวการคือบรรทัดนี้ บังคับให้อ่านคอลัมน์ pnl!
+	PnL         float64 `json:"pnl" gorm:"column:pnl"`
 	CreatedAt   string  `json:"created_at" gorm:"column:created_at"`
 }
+
 func main() {
 	// =========================================================================
-	// 🔌 SECTION 2: DATABASE CONNECTION
+	// 🔌 SECTION 2: DATABASE CONNECTION (อัปเกรดให้รองรับ Cloud)
 	// =========================================================================
-	dsn := "host=localhost user=postgres password=25248 dbname=fx_replay_db port=5432 sslmode=disable TimeZone=Asia/Bangkok"
+	
+	// 🌟 เช็คว่ามีตัวแปร DATABASE_URL จาก Render/Cloud ส่งมาหรือไม่
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		// ถ้าไม่มี (แปลว่ารันในเครื่องตัวเอง Local) ให้ใช้ค่านี้แทน
+		fmt.Println("⚠️ ไม่พบ DATABASE_URL กำลังใช้งาน Local Database แทน...")
+		dsn = "host=localhost user=postgres password=25248 dbname=fx_replay_db port=5432 sslmode=disable TimeZone=Asia/Bangkok"
+	}
+
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -108,7 +115,7 @@ func main() {
 	// =========================================================================
 
 	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "ยินดีต้อนรับสู่ FX Replay Backend (Golang Edition)!")
+		c.String(http.StatusOK, "ยินดีต้อนรับสู่ FX Replay Backend (Golang Edition) - Live on Cloud! 🚀")
 	})
 
 	r.POST("/api/register", func(c *gin.Context) {
@@ -172,16 +179,15 @@ func main() {
 		c.JSON(http.StatusOK, sessions)
 	})
 
-	// 🌟 เพิ่ม Endpoint ใหม่: ดึง Session Details (สำหรับ TradingPage)
 	r.GET("/api/sessions/:id", func(c *gin.Context) {
 		sessionID := c.Param("id")
 		var session BacktestSession
-		
+
 		if err := DB.Where("session_id = ?", sessionID).First(&session).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
 		}
-		
+
 		c.JSON(http.StatusOK, session)
 	})
 
@@ -207,7 +213,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "ลบเซสชันเรียบร้อยแล้ว"})
 	})
 
-	// 🌟 [อัปเกรดความแข็งแกร่ง] API ดึงข้อมูลกราฟแท่งเทียน
 	r.GET("/api/charts", func(c *gin.Context) {
 		assetName := "XAUUSD"
 		timeframe := c.Query("timeframe")
@@ -219,10 +224,8 @@ func main() {
 		}
 		startDate := c.DefaultQuery("start", "2023-01-01")
 
-		// 🔍 DEBUG: แสดง query parameters ที่รับเข้ามา
 		fmt.Printf("🔍 [DEBUG API] Query - Asset: %s, TF: '%s', Start: %s\n", assetName, timeframe, startDate)
 
-		// 1. สร้าง Struct มารับข้อมูลดิบ โดยบังคับให้ Time รับมาเป็น String เสมอ เพื่อกัน Go Error
 		type RawChartData struct {
 			Time  string  `gorm:"column:time"`
 			Open  float64 `gorm:"column:open"`
@@ -232,8 +235,6 @@ func main() {
 		}
 		var rawData []RawChartData
 
-		// ✅ แก้ไข: เปลี่ยน UPPER(timeframe) เป็น timeframe โดยตรง 
-		// เพราะ DB อาจเก็บเป็น '5M' หรือ '5m' ต้องตรวจสอบให้ถูกต้อง
 		result := DB.Table("chart_data").
 			Select("CAST(time AS TEXT) as time, open, high, low, close").
 			Where("asset_name = ? AND timeframe = ? AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, startDate).
@@ -241,20 +242,17 @@ func main() {
 			Limit(10000).
 			Find(&rawData)
 
-		// 🔍 DEBUG: แสดงจำนวนแถวที่ได้
 		fmt.Printf("📊 [DEBUG SQL] Retrieved %d rows for TF: %s\n", result.RowsAffected, timeframe)
 
-		// 2. ถ้าเจอ Error ทางฝั่ง Database จะส่ง อาร์เรย์เปล่า [] ให้ React เพื่อไม่ให้หน้าเว็บพัง!
 		if result.Error != nil {
 			fmt.Println("❌ Error GORM Chart SQL:", result.Error)
-			c.JSON(http.StatusOK, []ChartData{}) 
+			c.JSON(http.StatusOK, []ChartData{})
 			return
 		}
 
-		// ถ้าไม่มีข้อมูล ให้ลองค้นหาแบบ case-insensitive
 		if len(rawData) == 0 {
 			fmt.Printf("⚠️ [WARNING] No data found for TF '%s', trying case-insensitive search...\n", timeframe)
-			
+
 			result = DB.Table("chart_data").
 				Select("CAST(time AS TEXT) as time, open, high, low, close").
 				Where("asset_name = ? AND UPPER(timeframe) = UPPER(?) AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, startDate).
@@ -263,7 +261,7 @@ func main() {
 				Find(&rawData)
 
 			fmt.Printf("📊 [DEBUG SQL - Retry] Retrieved %d rows\n", result.RowsAffected)
-			
+
 			if result.Error != nil {
 				fmt.Println("❌ Error GORM Chart SQL (Retry):", result.Error)
 				c.JSON(http.StatusOK, []ChartData{})
@@ -271,18 +269,15 @@ func main() {
 			}
 		}
 
-		// 3. กำหนดค่า uniqueData ให้เป็น [] (ไม่เป็น null เด็ดขาด)
 		uniqueData := make([]ChartData, 0)
 		seenTimes := make(map[int64]bool)
 
 		for _, d := range rawData {
 			var t int64
-			
-			// จำลองตรรกะแปลงเวลาแบบที่เคยวางไว้ใน Node.js
+
 			if num, err := strconv.ParseInt(d.Time, 10, 64); err == nil {
-				t = num // กรณีข้อมูลเป็นตัวเลข Unix Timestamp มาตรงๆ
+				t = num
 			} else {
-				// กรณีข้อมูลเป็น String รูปแบบวันที่
 				parsedDate, err := time.Parse(time.RFC3339, d.Time)
 				if err != nil {
 					parsedDate, err = time.Parse("2006-01-02 15:04:05", d.Time)
@@ -293,12 +288,10 @@ func main() {
 				t = parsedDate.Unix()
 			}
 
-			// ปรับให้หน่วยเป็นวินาที
 			if t > 9999999999 {
 				t = t / 1000
 			}
 
-			// กรองข้อมูลซ้ำและต้องมั่นใจว่าเวลาแปลงสำเร็จ (t > 0)
 			if t > 0 && !seenTimes[t] {
 				seenTimes[t] = true
 				uniqueData = append(uniqueData, ChartData{
@@ -315,22 +308,20 @@ func main() {
 		c.JSON(http.StatusOK, uniqueData)
 	})
 
-	// 🆕 เพิ่ม API ให้เช็ค available timeframes ในฐานข้อมูล
 	r.GET("/api/available-timeframes", func(c *gin.Context) {
 		var timeframes []string
 		DB.Table("chart_data").
 			Distinct("timeframe").
 			Pluck("timeframe", &timeframes)
-		
+
 		fmt.Printf("📋 Available Timeframes in DB: %v\n", timeframes)
 		c.JSON(http.StatusOK, gin.H{"timeframes": timeframes})
 	})
 
-r.GET("/api/trades", func(c *gin.Context) {
+	r.GET("/api/trades", func(c *gin.Context) {
 		sessionID := c.Query("session_id")
 		userID := c.Query("user_id")
 
-		// 🌟 กรณีที่ 1: ดึงเฉพาะของ 1 Session (ใช้ในหน้ากราฟ TradingPage)
 		if sessionID != "" {
 			var trades []TradeHistory
 			DB.Where("session_id = ?", sessionID).Order("trade_id DESC").Find(&trades)
@@ -338,12 +329,9 @@ r.GET("/api/trades", func(c *gin.Context) {
 			return
 		}
 
-		// 🌟 กรณีที่ 2: ดึงประวัติรวมทั้งหมดของ User (ใช้ในหน้า HistoryPage)
 		if userID != "" {
 			var history []TradeHistoryResponse
-			
-			// ใช้ GORM JOIN ตาราง trade_history เข้ากับ backtest_session
-			// สังเกตว่าเราใช้คำสั่ง 'as' เพื่อแปลงชื่อคอลัมน์ให้ตรงกับที่ React ต้องการเป๊ะๆ
+
 			err := DB.Table("trade_history").
 				Select(`
 					trade_history.trade_id, 
@@ -365,29 +353,25 @@ r.GET("/api/trades", func(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"message": "ดึงข้อมูลประวัติไม่สำเร็จ"})
 				return
 			}
-			
-			// ส่งข้อมูลกลับไปในรูปแบบ { "trades": [...] }
+
 			c.JSON(http.StatusOK, gin.H{"trades": history})
 			return
 		}
 
-		// ถ้าไม่ส่งพารามิเตอร์อะไรมาเลย
 		c.JSON(http.StatusBadRequest, gin.H{"message": "กรุณาระบุ session_id หรือ user_id"})
 	})
 
-r.GET("/api/dashboard-stats", func(c *gin.Context) {
+	r.GET("/api/dashboard-stats", func(c *gin.Context) {
 		userID := c.Query("user_id")
 		if userID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "User ID is required"})
 			return
 		}
 
-		// 🌟 จุดที่แก้ 1: เปลี่ยน PnL เป็น *float64 (ใส่ดอกจัน) เพื่อให้รองรับค่าว่าง (NULL) ได้ระบบจะได้ไม่พัง
 		var trades []struct {
 			PnL *float64 `json:"pnl" gorm:"column:pnl"`
 		}
 
-		// 🌟 จุดที่แก้ 2: เพิ่ม AND trade_history.pnl IS NOT NULL เพื่อบวกเลขเฉพาะไม้ที่ปิดออเดอร์แล้วเท่านั้น
 		DB.Table("trade_history").
 			Select("trade_history.pnl").
 			Joins("JOIN backtest_session ON trade_history.session_id = backtest_session.session_id").
@@ -399,10 +383,10 @@ r.GET("/api/dashboard-stats", func(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{"trades": trades, "sessions": sessions})
 	})
+
 	r.POST("/api/trades", func(c *gin.Context) {
 		var newTrade TradeHistory
-		
-		// ถ้าข้อมูลที่ React ส่งมาไม่ตรงกับโครงสร้าง จะพ่น Error บอกใน Terminal
+
 		if err := c.ShouldBindJSON(&newTrade); err != nil {
 			fmt.Println("❌ [Backend] Bind JSON Error:", err)
 			c.JSON(http.StatusBadRequest, gin.H{"message": "ข้อมูลไม่ถูกต้อง", "error": err.Error()})
@@ -418,10 +402,17 @@ r.GET("/api/dashboard-stats", func(c *gin.Context) {
 		c.JSON(http.StatusCreated, newTrade)
 	})
 
-	fmt.Println("🚀 เซิร์ฟเวอร์ Backend (Golang) รันอยู่บนพอร์ต http://localhost:3000")
-	r.Run(":3000")
-
-
+	// =========================================================================
+	// 🚀 SECTION 4: PORT BINDING (อัปเกรดให้รองรับ Cloud)
+	// =========================================================================
 	
-}
+	// 🌟 เช็คว่ามีตัวแปร PORT จาก Render/Cloud ส่งมาหรือไม่
+	port := os.Getenv("PORT")
+	if port == "" {
+		// ถ้าไม่มีให้ใช้พอร์ต 3000 สำหรับการรันในเครื่อง (Local)
+		port = "3000"
+	}
 
+	fmt.Println("🚀 เซิร์ฟเวอร์ Backend (Golang) พร้อมรันบนพอร์ต :" + port)
+	r.Run(":" + port)
+}
