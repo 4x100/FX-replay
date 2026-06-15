@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // 1. นำเข้าหน้าต่างๆ ของคุณ

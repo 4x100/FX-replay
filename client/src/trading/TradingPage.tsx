@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import  { useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { createChart, ColorType, LineStyle } from 'lightweight-charts';
 import type { ISeriesApi, IPriceLine, IChartApi } from 'lightweight-charts';
@@ -36,7 +36,7 @@ export default function TradingPage() {
         useChartData(currentSessionId, paramStartDate || '2015-01-01', setCurrentIndex, setCurrentPrice);
 
     const { isPlaying, setIsPlaying, speed, setSpeed, handleNextCandle } =
-        useReplayControls(allData, currentIndex, seriesRef, setCurrentIndex, setCurrentPrice);
+        useReplayControls(allData, seriesRef, setCurrentIndex, setCurrentPrice);
 
     const positions = usePositions({
         currentPrice, sessionId: currentSessionId,
