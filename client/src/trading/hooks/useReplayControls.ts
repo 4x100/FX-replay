@@ -4,7 +4,6 @@ import type { ISeriesApi, CandlestickData } from 'lightweight-charts';
 
 export function useReplayControls(
     allData: CandlestickData[],
-    currentIndex: number,
     seriesRef: RefObject<ISeriesApi<'Candlestick'> | null>,
     setCurrentIndex: React.Dispatch<React.SetStateAction<number>>,
     setCurrentPrice: (p: number) => void,
