@@ -23,7 +23,7 @@ const HistoryPage = () => {
             try {
                 // 🌟 เรียกใช้ API ดึงประวัติเทรดทั้งหมดของ User คนนี้
                 // (ถ้ายังไม่มี API เส้นนี้ เดี๋ยวเราไปเขียนหลังบ้านเพิ่มกันได้ครับ)
-                const res = await fetch(`http://localhost:3000/api/trades?user_id=${user.user_id}`, {
+                const res = await fetch(`https://fx-replay-backend.onrender.com/api/trades?user_id=${user.user_id}`, {
                     cache: 'no-store'
                 });
                 const data = await res.json();

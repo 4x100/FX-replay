@@ -17,7 +17,7 @@ const RegisterPage = () => {
 
     try {
       // ส่งข้อมูลไปหา API พนักงานต้อนรับ (Backend) ที่พอร์ต 3000
-      const response = await fetch('http://localhost:3000/api/register', {
+      const response = await fetch('https://fx-replay-backend.onrender.com/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email, password: password }),

@@ -97,7 +97,7 @@ export default function TradingPage() {
         const fetchChartData = async () => {
             try {
                 setIsLoading(true);
-                const response = await fetch(`http://localhost:3000/api/charts?tf=${timeframe}&start=${startDate}`);
+                const response = await fetch(`https://fx-replay-backend.onrender.com/api/charts?tf=${timeframe}&start=${startDate}`);
                 const data = await response.json();
 
                 if (data && data.length > 0) {
@@ -118,7 +118,7 @@ export default function TradingPage() {
         const loadChartAndMemory = async () => {
             try {
                 setIsLoading(true);
-                const response = await fetch(`http://localhost:3000/api/charts?tf=${timeframe}&start=${startDate}`);
+                const response = await fetch(`https://fx-replay-backend.onrender.com/api/charts?tf=${timeframe}&start=${startDate}`);
                 const data = await response.json();
 
                 if (data && data.length > 0) {
@@ -177,7 +177,7 @@ export default function TradingPage() {
     useEffect(() => {
         const fetchTradeHistory = async () => {
             try {
-                const response = await fetch(`http://localhost:3000/api/trades?session_id=${currentSessionId}`);
+                const response = await fetch(`https://fx-replay-backend.onrender.com/api/trades?session_id=${currentSessionId}`);
                 const dbTrades = await response.json();
 
                 if (dbTrades && dbTrades.length > 0) {
@@ -495,7 +495,7 @@ export default function TradingPage() {
         setBalance(b => b + finalPnL);
         setTradeHistory(th => [closedPos, ...th]);
 
-        fetch('http://localhost:3000/api/trades', {
+        fetch('https://fx-replay-backend.onrender.com/api/trades', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

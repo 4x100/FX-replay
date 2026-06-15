@@ -35,7 +35,7 @@ export function usePositions({
         const fetchHistory = async () => {
             try {
                 const res = await fetch(
-                    `http://localhost:3000/api/trades?session_id=${sessionId}`
+                    `https://fx-replay-backend.onrender.com/api/trades?session_id=${sessionId}`
                 );
                 const dbTrades: DBTrade[] = await res.json();
 
@@ -97,7 +97,7 @@ export function usePositions({
         setTradeHistory(th => [closed, ...th]);
 
         // บันทึกลง DB
-        fetch('http://localhost:3000/api/trades', {
+        fetch('https://fx-replay-backend.onrender.com/api/trades', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -65,11 +65,11 @@ const DashboardPage = () => {
     });
 
     useEffect(() => {
-    // เช็คใน Zustand store ถ้าไม่มี user ให้ถีบไป Login เลย
-    if (!user) {
-        navigate('/login', { replace: true });
-    }
-}, [user, navigate]);
+        // เช็คใน Zustand store ถ้าไม่มี user ให้ถีบไป Login เลย
+        if (!user) {
+            navigate('/login', { replace: true });
+        }
+    }, [user, navigate]);
 
 
 
@@ -77,7 +77,7 @@ const DashboardPage = () => {
         const fetchDashboardData = async () => {
             if (!user?.user_id) return;
             try {
-                const res = await fetch(`http://localhost:3000/api/dashboard-stats?user_id=${user.user_id}`, {
+                const res = await fetch(`https://fx-replay-backend.onrender.com/api/dashboard-stats?user_id=${user.user_id}`, {
                     cache: 'no-store'
                 });
                 const data = await res.json();

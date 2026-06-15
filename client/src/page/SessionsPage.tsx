@@ -31,7 +31,7 @@ const SessionsPage = () => {
         const loadData = async () => {
             if (!user?.user_id) return;
             try {
-                const res = await fetch(`http://localhost:3000/api/sessions?user_id=${user.user_id}`);
+                const res = await fetch(`https://fx-replay-backend.onrender.com/api/sessions?user_id=${user.user_id}`);
                 const data = await res.json();
                 setSessions(data);
             } catch (error) {
@@ -54,7 +54,7 @@ const SessionsPage = () => {
         }
 
         try {
-            const res = await fetch('http://localhost:3000/api/sessions', {
+            const res = await fetch('https://fx-replay-backend.onrender.com/api/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -90,7 +90,7 @@ const SessionsPage = () => {
     const handleDeleteSession = async (sessionId: number) => {
         if (!window.confirm("แน่ใจหรือไม่ที่จะลบเซสชันนี้?")) return;
         try {
-            const res = await fetch(`http://localhost:3000/api/sessions/${sessionId}`, {
+            const res = await fetch(`https://fx-replay-backend.onrender.com/api/sessions/${sessionId}`, {
                 method: 'DELETE'
             });
             if (res.ok) {

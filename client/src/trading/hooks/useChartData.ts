@@ -25,7 +25,7 @@ export function useChartData(
             try {
                 setIsLoading(true);
                 const res = await fetch(
-                    `http://localhost:3000/api/charts?tf=${timeframe}&start=${startDate}`
+                    `https://fx-replay-backend.onrender.com/api/charts?tf=${timeframe}&start=${startDate}`
                 );
                 const data: CandlestickData[] = await res.json();
 
