@@ -270,40 +270,52 @@ func main() {
 		}
 
 		uniqueData := make([]ChartData, 0)
-		seenTimes := make(map[int64]bool)
+		// 🌟 1. ดึงค่า start_date ที่ React ส่งมา (สมมติว่ารับมาจาก Query Parameter)
+    startDateStr := c.Query("start_date") // เช่น "2015-06-01"
+    
+    // 🌟 2. แปลงเป็นเวลา และ "ถอยหลัง 5 เดือน" เพื่อทำ Data Warm-up ให้ MACD
+    parsedStartDate, _ := time.Parse("2006-01-02", startDateStr)
+    lookbackDate := parsedStartDate.AddDate(0, -5, 0) // ถอยหลัง 5 เดือน (ปี, เดือน, วัน)
+    lookbackUnix := lookbackDate.Unix()               // แปลงเป็นตัวเลข Unix เพื่อเอาไปเทียบในลูป
 
-		for _, d := range rawData {
-			var t int64
+    var uniqueData []ChartData
+    seenTimes := make(map[int64]bool)
 
-			if num, err := strconv.ParseInt(d.Time, 10, 64); err == nil {
-				t = num
-			} else {
-				parsedDate, err := time.Parse(time.RFC3339, d.Time)
-				if err != nil {
-					parsedDate, err = time.Parse("2006-01-02 15:04:05", d.Time)
-				}
-				if err != nil {
-					parsedDate, _ = time.Parse("2006-01-02", d.Time)
-				}
-				t = parsedDate.Unix()
-			}
+    // ลูปข้อมูลของคุณ
+    for _, d := range rawData {
+        var t int64
 
-			if t > 9999999999 {
-				t = t / 1000
-			}
+        // ... (โค้ดแปลงเวลาของคุณเหมือนเดิมเป๊ะ) ...
+        if num, err := strconv.ParseInt(d.Time, 10, 64); err == nil {
+            t = num
+        } else {
+            parsedDate, err := time.Parse(time.RFC3339, d.Time)
+            if err != nil {
+                parsedDate, err = time.Parse("2006-01-02 15:04:05", d.Time)
+            }
+            if err != nil {
+                parsedDate, _ = time.Parse("2006-01-02", d.Time)
+            }
+            t = parsedDate.Unix()
+        }
 
-			if t > 0 && !seenTimes[t] {
-				seenTimes[t] = true
-				uniqueData = append(uniqueData, ChartData{
-					Time:  t,
-					Open:  d.Open,
-					High:  d.High,
-					Low:   d.Low,
-					Close: d.Close,
-				})
-			}
-		}
+        if t > 9999999999 {
+            t = t / 1000
+        }
 
+        // 🌟 3. อัปเกรดเงื่อนไข: กรองเอาเฉพาะข้อมูลที่ "ใหม่กว่าหรือเท่ากับเวลา Lookback" เท่านั้น
+        // (แท่งเทียนที่เก่าเกิน 5 เดือนก่อนหน้าวัน Start Date จะถูกโยนทิ้ง ไม่เปลืองเน็ต)
+        if t >= lookbackUnix && !seenTimes[t] {
+            seenTimes[t] = true
+            uniqueData = append(uniqueData, ChartData{
+                Time:  t,
+                Open:  d.Open,
+                High:  d.High,
+                Low:   d.Low,
+                Close: d.Close,
+            })
+        }
+    }
 		fmt.Printf("✅ [Backend] ส่งข้อมูล %s (เริ่ม %s) จำนวน %d แท่ง\n", timeframe, startDate, len(uniqueData))
 		c.JSON(http.StatusOK, uniqueData)
 	})
