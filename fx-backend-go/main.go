@@ -222,9 +222,15 @@ func main() {
 		if timeframe == "" {
 			timeframe = "15M"
 		}
+		
+		// 🌟 1. รับ startDate มา และคำนวณถอยหลัง 5 เดือนทันทีตั้งแต่วินาทีแรก!
 		startDate := c.DefaultQuery("start", "2023-01-01")
+		parsedStartDate, _ := time.Parse("2006-01-02", startDate)
+		lookbackDate := parsedStartDate.AddDate(0, -5, 0) // ถอยหลัง 5 เดือน
+		lookbackDateStr := lookbackDate.Format("2006-01-02") // แปลงกลับเป็นข้อความเพื่อส่งให้ SQL
+		lookbackUnix := lookbackDate.Unix()
 
-		fmt.Printf("🔍 [DEBUG API] Query - Asset: %s, TF: '%s', Start: %s\n", assetName, timeframe, startDate)
+		fmt.Printf("🔍 [DEBUG API] Query - TF: '%s', Start: %s (Lookback เผื่อไว้ตั้งแต่: %s)\n", timeframe, startDate, lookbackDateStr)
 
 		type RawChartData struct {
 			Time  string  `gorm:"column:time"`
@@ -235,91 +241,74 @@ func main() {
 		}
 		var rawData []RawChartData
 
+		// 🌟 2. จุดสำคัญ: เปลี่ยนตรงนี้ให้ใช้ lookbackDateStr ไม่ใช่ startDate
 		result := DB.Table("chart_data").
 			Select("CAST(time AS TEXT) as time, open, high, low, close").
-			Where("asset_name = ? AND timeframe = ? AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, startDate).
+			Where("asset_name = ? AND timeframe = ? AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, lookbackDateStr).
 			Order("time ASC").
 			Limit(10000).
 			Find(&rawData)
 
-		fmt.Printf("📊 [DEBUG SQL] Retrieved %d rows for TF: %s\n", result.RowsAffected, timeframe)
-
 		if result.Error != nil {
-			fmt.Println("❌ Error GORM Chart SQL:", result.Error)
 			c.JSON(http.StatusOK, []ChartData{})
 			return
 		}
 
 		if len(rawData) == 0 {
-			fmt.Printf("⚠️ [WARNING] No data found for TF '%s', trying case-insensitive search...\n", timeframe)
-
+			// 🌟 2.1 ตรงนี้ก็ต้องแก้เป็น lookbackDateStr ด้วยเหมือนกัน
 			result = DB.Table("chart_data").
 				Select("CAST(time AS TEXT) as time, open, high, low, close").
-				Where("asset_name = ? AND UPPER(timeframe) = UPPER(?) AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, startDate).
+				Where("asset_name = ? AND UPPER(timeframe) = UPPER(?) AND CAST(time AS DATE) >= ?::DATE", assetName, timeframe, lookbackDateStr).
 				Order("time ASC").
 				Limit(10000).
 				Find(&rawData)
 
-			fmt.Printf("📊 [DEBUG SQL - Retry] Retrieved %d rows\n", result.RowsAffected)
-
 			if result.Error != nil {
-				fmt.Println("❌ Error GORM Chart SQL (Retry):", result.Error)
 				c.JSON(http.StatusOK, []ChartData{})
 				return
 			}
 		}
 
-		uniqueData := make([]ChartData, 0)
-		// 🌟 1. ดึงค่า start_date ที่ React ส่งมา (สมมติว่ารับมาจาก Query Parameter)
-    startDateStr := c.Query("start_date") // เช่น "2015-06-01"
-    
-    // 🌟 2. แปลงเป็นเวลา และ "ถอยหลัง 5 เดือน" เพื่อทำ Data Warm-up ให้ MACD
-    parsedStartDate, _ := time.Parse("2006-01-02", startDateStr)
-    lookbackDate := parsedStartDate.AddDate(0, -5, 0) // ถอยหลัง 5 เดือน (ปี, เดือน, วัน)
-    lookbackUnix := lookbackDate.Unix()               // แปลงเป็นตัวเลข Unix เพื่อเอาไปเทียบในลูป
+		var uniqueData []ChartData
+		seenTimes := make(map[int64]bool)
 
-    var uniqueData []ChartData
-    seenTimes := make(map[int64]bool)
+		// 🌟 3. ลูปกรองข้อมูลรอบสุดท้าย
+		for _, d := range rawData {
+			var t int64
 
-    // ลูปข้อมูลของคุณ
-    for _, d := range rawData {
-        var t int64
+			if num, err := strconv.ParseInt(d.Time, 10, 64); err == nil {
+				t = num
+			} else {
+				parsedDate, err := time.Parse(time.RFC3339, d.Time)
+				if err != nil {
+					parsedDate, err = time.Parse("2006-01-02 15:04:05", d.Time)
+				}
+				if err != nil {
+					parsedDate, _ = time.Parse("2006-01-02", d.Time)
+				}
+				t = parsedDate.Unix()
+			}
 
-        // ... (โค้ดแปลงเวลาของคุณเหมือนเดิมเป๊ะ) ...
-        if num, err := strconv.ParseInt(d.Time, 10, 64); err == nil {
-            t = num
-        } else {
-            parsedDate, err := time.Parse(time.RFC3339, d.Time)
-            if err != nil {
-                parsedDate, err = time.Parse("2006-01-02 15:04:05", d.Time)
-            }
-            if err != nil {
-                parsedDate, _ = time.Parse("2006-01-02", d.Time)
-            }
-            t = parsedDate.Unix()
-        }
+			if t > 9999999999 {
+				t = t / 1000
+			}
 
-        if t > 9999999999 {
-            t = t / 1000
-        }
+			// กรองด้วยเวลา lookbackUnix ตามที่คุณทำไว้ถูกต้องแล้วครับ
+			if t >= lookbackUnix && !seenTimes[t] {
+				seenTimes[t] = true
+				uniqueData = append(uniqueData, ChartData{
+					Time:  t,
+					Open:  d.Open,
+					High:  d.High,
+					Low:   d.Low,
+					Close: d.Close,
+				})
+			}
+		}
 
-        // 🌟 3. อัปเกรดเงื่อนไข: กรองเอาเฉพาะข้อมูลที่ "ใหม่กว่าหรือเท่ากับเวลา Lookback" เท่านั้น
-        // (แท่งเทียนที่เก่าเกิน 5 เดือนก่อนหน้าวัน Start Date จะถูกโยนทิ้ง ไม่เปลืองเน็ต)
-        if t >= lookbackUnix && !seenTimes[t] {
-            seenTimes[t] = true
-            uniqueData = append(uniqueData, ChartData{
-                Time:  t,
-                Open:  d.Open,
-                High:  d.High,
-                Low:   d.Low,
-                Close: d.Close,
-            })
-        }
-    }
 		fmt.Printf("✅ [Backend] ส่งข้อมูล %s (เริ่ม %s) จำนวน %d แท่ง\n", timeframe, startDate, len(uniqueData))
 		c.JSON(http.StatusOK, uniqueData)
 	})
-
 	r.GET("/api/available-timeframes", func(c *gin.Context) {
 		var timeframes []string
 		DB.Table("chart_data").
