@@ -11,7 +11,6 @@ interface TopBarProps {
     indicators: IndicatorConfig[];
     showIndicatorMenu: boolean;
     onTimeframeChange: (tf: string) => void;
-    onStartDateChange: (date: string) => void;
     onPlayToggle: () => void;
     onNextCandle: () => void;
     onSpeedChange: (ms: number) => void;
@@ -20,9 +19,9 @@ interface TopBarProps {
 }
 
 export function TopBar({
-    sessionId, timeframe, startDate, isPlaying, speed,
+    sessionId, timeframe,  isPlaying, speed,
     indicators, showIndicatorMenu,
-    onTimeframeChange, onStartDateChange, onPlayToggle, onNextCandle, onSpeedChange,
+    onTimeframeChange, onPlayToggle, onNextCandle, onSpeedChange,
     onSetIndicators, onToggleIndicatorMenu,
 }: TopBarProps) {
 
@@ -53,14 +52,7 @@ export function TopBar({
                     Session #{sessionId}
                 </span>
 
-                <div className="flex items-center bg-[#1e222d] border border-[#2a2e39] rounded ml-2 overflow-hidden px-2">
-                    <span className="text-gray-400 text-xs mr-2 uppercase font-bold">Start:</span>
-                    <input
-                        type="date" value={startDate} min="2015-01-01" max="2025-12-31"
-                        onChange={e => onStartDateChange(e.target.value)}
-                        className="bg-transparent text-white text-xs py-1 focus:outline-none focus:text-blue-400 cursor-pointer"
-                    />
-                </div>
+
 
                 {/* Timeframe buttons */}
                 <div className="flex bg-[#1e222d] rounded ml-2 shadow-sm border border-[#2a2e39] overflow-hidden">

@@ -1,7 +1,7 @@
-import  { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { createChart, ColorType, LineStyle } from 'lightweight-charts';
-import type { ISeriesApi, IPriceLine, IChartApi } from 'lightweight-charts';
+import type { ISeriesApi, IChartApi } from 'lightweight-charts';
 
 import { useChartData } from './hooks/useChartData';
 import { useReplayControls } from './hooks/useReplayControls';
@@ -32,7 +32,7 @@ export default function TradingPage() {
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     // ─── Hooks ───────────────────────────────────────────────────────────────
-    const { allData, isLoading, timeframe, startDate, setStartDate, handleTimeframeChange } =
+    const { allData, isLoading, timeframe, startDate, handleTimeframeChange } =
         useChartData(currentSessionId, paramStartDate || '2015-01-01', setCurrentIndex, setCurrentPrice);
 
     const { isPlaying, setIsPlaying, speed, setSpeed, handleNextCandle } =
@@ -50,13 +50,56 @@ export default function TradingPage() {
         showIndicatorMenu, setShowIndicatorMenu,
         rsiContainerRef, macdContainerRef,
     } = useIndicators(allData, currentIndex, chartRef);  // ← ส่ง chartRef ให้ indicator วาดบนกราฟหลักได้
+    // ─── 🌟 State ควบคุมความสูงของ Indicator Panel ─────────────────────────
+    const [macdHeight, setMacdHeight] = useState(140);
+    const [rsiHeight, setRsiHeight] = useState(120);
 
+    // ฟังก์ชันดึงขอบบน MACD
+    const startMacdResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = macdHeight;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            // ลากขึ้น = ความสูงเพิ่มขึ้น
+            const newHeight = startHeight + (startY - moveEvent.clientY);
+            setMacdHeight(Math.max(60, Math.min(400, newHeight))); // จำกัดความสูง 60px ถึง 400px
+        };
+        const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    // ฟังก์ชันดึงขอบบน RSI
+    const startRsiResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = rsiHeight;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const newHeight = startHeight + (startY - moveEvent.clientY);
+            setRsiHeight(Math.max(60, Math.min(400, newHeight)));
+        };
+        const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    // ─── Chart Setup ─────────────────────────────────────────────────────────
     // ─── Chart Setup ─────────────────────────────────────────────────────────
     useEffect(() => {
         const container = chartContainerRef.current;
         if (!container || allData.length === 0) return;
 
-        container.innerHTML = '';
+        // ❌ ห้ามใช้ container.innerHTML = ''; เด็ดขาด! มันคือตัวการทำให้ Canvas พัง
         priceLinesRef.current.clear();
 
         const chart = createChart(container, {
@@ -67,14 +110,13 @@ export default function TradingPage() {
             timeScale: {
                 timeVisible: true,
                 secondsVisible: false,
-                // 🌟 [แก้ไขจุดนี้] เพื่อความยืดหยุ่นในการ Backtest
-                rightOffset: 15,          // 👈 เว้นช่องว่างขวาไว้ 15 แท่งเทียน จะได้ไม่ชิดขอบจนอึดอัดมองไม่เห็น
+                rightOffset: 15,
                 fixLeftEdge: false,
-                fixRightEdge: false,      // 👈 ปิดการล็อกขอบขวาถาวร ไม่ให้มันฝืนมือตอนเราลากกราฟ
+                fixRightEdge: false,
             },
         });
 
-        chartRef.current = chart;  // ← สำคัญ: ให้ useIndicators เข้าถึงกราฟหลักได้
+        chartRef.current = chart;
 
         const series = chart.addCandlestickSeries({
             upColor: '#089981', downColor: '#f23645', borderVisible: false,
@@ -91,22 +133,43 @@ export default function TradingPage() {
                 lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
                 title: `${pos.type} ${pos.lotSize}`,
             });
-            let tp: IPriceLine | undefined, sl: IPriceLine | undefined;
+            let tp, sl;
             if (pos.tp) tp = series.createPriceLine({ price: pos.tp, color: '#089981', lineWidth: 2, lineStyle: LineStyle.Solid, title: 'TP Target' });
             if (pos.sl) sl = series.createPriceLine({ price: pos.sl, color: '#f23645', lineWidth: 2, lineStyle: LineStyle.Solid, title: 'SL Limit' });
             priceLinesRef.current.set(pos.id, { entry, tp, sl });
         });
 
+        let reqId: number;
         const ro = new ResizeObserver(([e]) => {
             const { width, height } = e.contentRect;
-            window.requestAnimationFrame(() => chart.applyOptions({ width, height }));
+            if (reqId) window.cancelAnimationFrame(reqId);
+            reqId = window.requestAnimationFrame(() => {
+                // 🌟 ป้องกันไม่ให้กราฟที่โดนลบไปแล้วมาอัปเดตขนาด
+                if (chartRef.current) {
+                    try { chart.applyOptions({ width, height }); } catch  { //
+                        }
+                }
+            });
         });
         ro.observe(container);
 
+        // 🌟 THE MASTER CLEANUP: วิธีทำลายกราฟที่ถูกต้องใน React
         return () => {
-            chartRef.current = null;
+            if (reqId) window.cancelAnimationFrame(reqId);
             ro.disconnect();
-            chart.remove();
+
+            // 1. ถอดปลั๊กออกให้หมด! เพื่อให้ไฟล์อื่นๆ (เช่น usePositions) รู้ว่ากราฟตายแล้ว
+            chartRef.current = null;
+            seriesRef.current = null;
+
+            // 2. ท่าไม้ตาย! เอา setTimeout มาครอบ chart.remove() ไว้ 
+            // เพื่อหน่วงเวลาให้ React สะสาง State ทุกอย่างให้จบก่อน ค่อยกดระเบิดทิ้ง!
+            setTimeout(() => {
+                try {
+                    chart.remove();
+                } catch  { //
+                     }
+            }, 0);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allData]);
@@ -128,7 +191,6 @@ export default function TradingPage() {
                 indicators={indicators}
                 showIndicatorMenu={showIndicatorMenu}
                 onTimeframeChange={tf => handleTimeframeChange(tf, currentIndex)}
-                onStartDateChange={setStartDate}
                 onPlayToggle={() => setIsPlaying(p => !p)}
                 onNextCandle={handleNextCandle}
                 onSpeedChange={setSpeed}
@@ -139,25 +201,44 @@ export default function TradingPage() {
             <ChartContainer ref={chartContainerRef} isLoading={isLoading} />
 
             {/* RSI Sub-chart (แสดงเมื่อเปิด RSI) */}
+            {/* RSI Sub-chart */}
             {indicators.some(i => i.type === 'RSI' && i.enabled) && (
-                <div className="h-28 shrink-0 border-t border-[#2a2e39] bg-[#0b0e14] relative">
-                    <div className="absolute top-1 left-2 text-[10px] font-bold text-amber-400 z-10 pointer-events-none">
+                <div
+                    className="shrink-0 bg-[#0b0e14] relative flex flex-col border-t border-[#2a2e39]"
+                    style={{ height: `${rsiHeight}px` }} // 🌟 ใช้ความสูงจาก State
+                >
+                    {/* 🌟 ตัวจับลากขอบบน (Drag Handle) */}
+                    <div
+                        className="absolute top-0 left-0 w-full h-1.5 cursor-row-resize z-20 hover:bg-blue-500/50 transition-colors"
+                        onMouseDown={startRsiResize}
+                    />
+
+                    <div className="absolute top-3 left-2 text-[10px] font-bold text-amber-400 z-10 pointer-events-none">
                         RSI({indicators.find(i => i.type === 'RSI')?.period || 14})
                     </div>
-                    <div ref={rsiContainerRef} className="w-full h-full" />
+                    <div ref={rsiContainerRef} className="w-full flex-1" />
                 </div>
             )}
 
-            {/* MACD Sub-chart (แสดงเมื่อเปิด MACD) */}
+            {/* MACD Sub-chart */}
+            {/* MACD Sub-chart */}
             {indicators.some(i => i.type === 'MACD' && i.enabled) && (
-                <div className="h-28 shrink-0 border-t border-[#2a2e39] bg-[#0b0e14] relative">
-                    <div className="absolute top-1 left-2 text-[10px] font-bold text-purple-400 z-10 pointer-events-none">
+                <div
+                    className="shrink-0 bg-[#0b0e14] relative flex flex-col border-t border-[#2a2e39]"
+                    style={{ height: `${macdHeight}px` }} // 🌟 ใช้ความสูงจาก State
+                >
+                    {/* 🌟 ตัวจับลากขอบบน (Drag Handle) */}
+                    <div
+                        className="absolute top-0 left-0 w-full h-1.5 cursor-row-resize z-20 hover:bg-blue-500/50 transition-colors"
+                        onMouseDown={startMacdResize}
+                    />
+
+                    <div className="absolute top-3 left-2 text-[10px] font-bold text-purple-400 z-10 pointer-events-none">
                         MACD({indicators.find(i => i.type === 'MACD')?.fastPeriod},{indicators.find(i => i.type === 'MACD')?.slowPeriod},{indicators.find(i => i.type === 'MACD')?.signalPeriod})
                     </div>
-                    <div ref={macdContainerRef} className="w-full h-full" />
+                    <div ref={macdContainerRef} className="w-full flex-1" />
                 </div>
             )}
-
             <TradePanel
                 isOpen={isPanelOpen}
                 activePositions={positions.activePositions}

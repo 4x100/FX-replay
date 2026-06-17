@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const RegisterPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const navigate = useNavigate();
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -26,7 +28,8 @@ const RegisterPage = () => {
       const data = await response.json();
 
       if (response.ok) {
-        alert("🎉 สมัครสมาชิกสำเร็จแล้ว! ไปที่หน้า Login ได้เลย");
+        alert("สมัครสมาชิกสำเร็จแล้ว!");
+        navigate('/');
         setEmail('');
         setPassword('');
         setConfirmPassword('');

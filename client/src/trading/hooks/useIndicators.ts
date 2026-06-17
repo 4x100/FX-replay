@@ -207,13 +207,19 @@ export function useIndicators(
     series.setData(
       filtered.map((d) => ({ time: d.time as Time, value: d.value })),
     );
-
-    const obs = new ResizeObserver(() =>
-      chart.applyOptions({
-        width: container.clientWidth,
-        height: container.clientHeight,
-      }),
-    );
+    const obs = new ResizeObserver(() => {
+      try {
+        // 🌟 ใส่ try-catch ครอบไว้! ถ้ากราฟตายแล้วจะได้ไม่พ่น Error
+        if (container && macdChartRef.current) {
+          macdChartRef.current.applyOptions({
+            width: container.clientWidth,
+            height: container.clientHeight,
+          });
+        }
+      } catch  {
+        // ปล่อยผ่านเงียบๆ
+      }
+    });
     obs.observe(container);
     return () => {
       obs.disconnect();
@@ -224,118 +230,288 @@ export function useIndicators(
 
   // ── MACD Sub-chart ────────────────────────────────────────────────────────
   // ── MACD Sub-chart (จัดการสร้างกราฟและอัปเดตข้อมูล) ──────────────────────────
-    useEffect(() => {
-        const container = macdContainerRef.current;
-        const macdInd = indicators.find(i => i.type === 'MACD' && i.enabled);
+  // ─── 🌟 EFFECT 1: สร้างกราฟ MACD และยัดข้อมูลให้ตำแหน่งตรงกันเป๊ะ 1:1 ───
+  useEffect(() => {
+    const container = macdContainerRef.current;
+    const macdInd = indicators.find((i) => i.type === "MACD" && i.enabled);
 
-        if (!container || !macdInd || allData.length === 0) {
-            if (macdChartRef.current) {
-                macdChartRef.current.remove();
-                macdChartRef.current = null;
-                macdSeriesRef.current = null;
-                macdLastLengthRef.current = 0;
-            }
-            return;
+    if (!container || !macdInd || allData.length === 0) {
+      if (macdChartRef.current) {
+        macdChartRef.current.remove();
+        macdChartRef.current = null;
+        macdSeriesRef.current = null;
+      }
+      return;
+    }
+
+    const macdDataRaw = indicatorResults.macd.get(macdInd.id) || [];
+    if (macdDataRaw.length === 0) return;
+
+    // 🌟 1. ดึงกราฟราคาหลักมาเป็น "แกนตั้งต้น" (ความยาวต้องเท่ากันเป๊ะ)
+    const currentMainData = allData.slice(0, currentIndex + 1);
+
+    // 🌟 2. เอาข้อมูล MACD มาใส่ Map เพื่อให้ค้นหาตามเวลาได้เร็วขึ้น
+    const macdDict = new Map();
+    macdDataRaw.forEach((d) => macdDict.set(d.time, d));
+
+    // 🌟 3. ประกอบร่างข้อมูล 1:1 ป้องกันกราฟเหลื่อม!
+    const histData = currentMainData.map((candle) => {
+      const mItem = macdDict.get(candle.time);
+      // เช็คว่า MACD คำนวณเสร็จหรือยัง (ไม่ใช่ช่วงตั้งไข่ 26 แท่งแรก)
+      const isValid = mItem && mItem.macd !== undefined && !isNaN(mItem.macd);
+
+      return {
+        time: candle.time as Time,
+        value: isValid ? mItem.macd : 0, // ถ้าไม่มีค่าให้ยัด 0 ดันไว้แท่งจะได้ไม่เบี้ยว
+        color: isValid ? "#2962FF" : "transparent", // ซ่อนแท่งที่ไม่มีค่าให้ล่องหน
+      };
+    });
+
+    if (histData.length === 0) return;
+
+    // 4. สร้างตัวกราฟ (ทำครั้งแรกครั้งเดียว)
+    if (!macdChartRef.current) {
+      container.innerHTML = "";
+      const subChart = createChart(container, {
+        layout: {
+          background: { type: ColorType.Solid, color: "#0b0e14" },
+          textColor: "#64748b",
+        },
+        grid: {
+          vertLines: { color: "#1e222d" },
+          horzLines: { color: "#1e222d" },
+        },
+        width: container.clientWidth,
+        height: container.clientHeight,
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          borderColor: "#2a2e39",
+          rightOffset: 15,
+          fixRightEdge: false,
+        },
+        rightPriceScale: {
+          borderColor: "#2a2e39",
+          scaleMargins: { top: 0.1, bottom: 0.1 },
+        },
+      });
+      macdChartRef.current = subChart;
+
+      macdSeriesRef.current = subChart.addHistogramSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        title: "MACD",
+      });
+
+      const obs = new ResizeObserver(() => {
+        if (container && macdChartRef.current) {
+          macdChartRef.current.applyOptions({
+            width: container.clientWidth,
+            height: container.clientHeight,
+          });
         }
+      });
+      obs.observe(container);
+    }
 
-        const macdData = indicatorResults.macd.get(macdInd.id) || [];
-        if (macdData.length === 0) return;
+    // 5. ป้อนข้อมูลใส่กราฟ
+    if (macdSeriesRef.current) {
+      macdSeriesRef.current.setData(histData);
+    }
+  }, [indicatorResults, indicators, currentIndex, allData]);
 
-        const currentTime = allData[Math.min(currentIndex, allData.length - 1)].time as number;
-        const filtered = macdData.filter(d => d.time <= currentTime);
-        if (filtered.length === 0) return;
+  // ─── 🌟 EFFECT 2: ระบบซิงค์ 100% สองทิศทาง (Bidirectional Sync) ───
+  useEffect(() => {
+    const mainChart = chartRef?.current;
+    const subChart = macdChartRef?.current;
 
-        if (!macdChartRef.current) {
-            container.innerHTML = '';
-            macdChartRef.current = createChart(container, {
-                layout: { background: { type: ColorType.Solid, color: '#0b0e14' }, textColor: '#64748b' },
-                grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
-                width: container.clientWidth, height: container.clientHeight,
-                timeScale: { 
-                    timeVisible: true, 
-                    secondsVisible: false, 
-                    borderColor: '#2a2e39',
-                    rightOffset: 15, 
-                    fixRightEdge: false, 
-                },
-                rightPriceScale: { 
-                    borderColor: '#2a2e39', 
-                    scaleMargins: { top: 0.1, bottom: 0.1 },
-                    minimumWidth: 75, 
-                },
-            });
+    // ถ้ามีกราฟใดกราฟหนึ่งยังไม่เกิด ให้ข้ามไปก่อน (กันบั๊กสายไฟหลุด)
+    if (!mainChart || !subChart) return;
 
-            macdSeriesRef.current = macdChartRef.current.addHistogramSeries({ 
-                color: '#2962FF', 
-                priceLineVisible: false, 
-                lastValueVisible: true, 
-                title: 'MACD' 
-            });
+    const mainTimeScale = mainChart.timeScale();
+    const subTimeScale = subChart.timeScale();
 
-            const obs = new ResizeObserver(() => {
-                if (container && macdChartRef.current) {
-                    macdChartRef.current.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-                }
-            });
-            obs.observe(container);
-            
-            macdSyncCleanupRef.current = () => {
-                obs.disconnect();
-            };
+    let isSyncing = false;
+
+    // ลากกราฟบน ล่างตาม
+    const syncToMain = (range: LogicalRange | null) => {
+      if (!isSyncing && range) {
+        isSyncing = true;
+        subTimeScale.setVisibleLogicalRange(range);
+        isSyncing = false;
+      }
+    };
+
+    // ลากกราฟล่าง บนตาม
+    const syncToSub = (range: LogicalRange | null) => {
+      if (!isSyncing && range) {
+        isSyncing = true;
+        mainTimeScale.setVisibleLogicalRange(range);
+        isSyncing = false;
+      }
+    };
+
+    // เสียบสายไฟดักจับการเลื่อนกราฟ
+    mainTimeScale.subscribeVisibleLogicalRangeChange(syncToMain);
+    subTimeScale.subscribeVisibleLogicalRangeChange(syncToSub);
+
+    // จัดหน้าให้ตรงกันเป๊ะตั้งแต่วินาทีแรกที่เปิด
+    const currentMainRange = mainTimeScale.getVisibleLogicalRange();
+    if (currentMainRange) {
+      subTimeScale.setVisibleLogicalRange(currentMainRange);
+    }
+
+    // ถอดสายไฟเมื่อปิดกราฟ
+    return () => {
+      mainTimeScale.unsubscribeVisibleLogicalRangeChange(syncToMain);
+      subTimeScale.unsubscribeVisibleLogicalRangeChange(syncToSub);
+    };
+  }, [chartRef, indicators]); // ใช้แค่ chartRef ไม่มี .current เพื่อป้องกัน ESLint โวยวาย
+
+  // ── macd ──
+
+  // ─── 🌟 THE PERFECT MACD (แท่งเดี่ยว + ซิงค์ 100% + ป้องกันกราฟแบน) ───
+  useEffect(() => {
+    const container = macdContainerRef.current;
+    const mainChart = chartRef.current;
+    const macdInd = indicators.find((i) => i.type === "MACD" && i.enabled);
+
+    // 1. Cleanup ล้างกระดานหากปิดการใช้งาน MACD
+    if (!container || !macdInd || allData.length === 0) {
+      if (macdChartRef.current) {
+        if (macdSyncCleanupRef.current) macdSyncCleanupRef.current();
+        macdChartRef.current.remove();
+        macdChartRef.current = null;
+        macdSeriesRef.current = null;
+        macdLastLengthRef.current = 0;
+      }
+      return;
+    }
+
+    const macdDataRaw = indicatorResults.macd.get(macdInd.id) || [];
+    if (macdDataRaw.length === 0) return;
+
+    const currentTime = allData[Math.min(currentIndex, allData.length - 1)]
+      .time as number;
+
+    // 🌟 2. DATA PREPARATION: จัดการข้อมูลขั้นเทพ
+    // แทนที่จะ slice ทิ้ง (ซึ่งทำให้เวลา 2 กราฟเหลื่อมกัน) เราใช้วิธีเปลี่ยนค่าเป็น 0 และซ่อนสีแทน!
+    const histData = macdDataRaw
+      .filter((d) => d.time <= currentTime)
+      .map((d, index) => {
+        // MACD ปกติต้องใช้เวลาตั้งไข่ 26 แท่ง (Slow Period) ช่วงนี้ค่าจะรวน ให้เราจับกดเป็น 0 ให้หมด
+        const isWarmup = index < 26 || d.macd === undefined || isNaN(d.macd);
+        return {
+          time: d.time as Time,
+          value: isWarmup ? 0 : d.macd, // ถ้าอยู่ช่วงตั้งไข่ให้ค่าเป็น 0 กราฟจะได้ไม่แบน
+          color: isWarmup ? "transparent" : "#2962FF", // ซ่อนสีในช่วง 26 แท่งแรกไปเลย
+        };
+      });
+
+    if (histData.length === 0) return;
+
+    // 3. CHART CREATION: สร้างกราฟและผูกสายไฟ Sync ครั้งแรก
+    if (!macdChartRef.current) {
+      container.innerHTML = "";
+      const subChart = createChart(container, {
+        layout: {
+          background: { type: ColorType.Solid, color: "#0b0e14" },
+          textColor: "#64748b",
+        },
+        grid: {
+          vertLines: { color: "#1e222d" },
+          horzLines: { color: "#1e222d" },
+        },
+        width: container.clientWidth,
+        height: container.clientHeight,
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          borderColor: "#2a2e39",
+          rightOffset: 15,
+          fixRightEdge: false,
+        },
+        rightPriceScale: {
+          borderColor: "#2a2e39",
+          scaleMargins: { top: 0.05, bottom: 0.02 }, // บีบ Margin ให้แคบ กราฟจะได้แนบสนิท
+          minimumWidth: 75,
+        },
+      });
+      macdChartRef.current = subChart;
+
+      // วาดแท่ง Histogram เพียวๆ ตามความต้องการ
+      macdSeriesRef.current = subChart.addHistogramSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        title: "MACD",
+      });
+
+      const obs = new ResizeObserver(() => {
+        if (container && macdChartRef.current) {
+          macdChartRef.current.applyOptions({
+            width: container.clientWidth,
+            height: container.clientHeight,
+          });
         }
+      });
+      obs.observe(container);
 
-        if (macdSeriesRef.current) {
-            const newChartData = filtered.map(d => ({ time: d.time as Time, value: d.macd }));
-            if (macdLastLengthRef.current > 0 && newChartData.length === macdLastLengthRef.current + 1) {
-                macdSeriesRef.current.update(newChartData[newChartData.length - 1]);
-            } else {
-                macdSeriesRef.current.setData(newChartData);
-            }
-            macdLastLengthRef.current = newChartData.length;
-        }
-
-    }, [indicatorResults, indicators, currentIndex, allData, chartRef]);
-
-    // ── 🌟 [เพิ่มชุดนี้ต่อท้าย] PERFECT CHART SYNC EFFECT (ตัวซิงค์กราฟบน-ล่างให้ขยับตามกันเป๊ะๆ) ──
-    useEffect(() => {
-        const mainChart = chartRef.current;
-        const subChart = macdChartRef.current;
-        if (!mainChart || !subChart) return;
-
+      // 🌟 4. PERFECT SYNC: ระบบล็อคกราฟสองทิศทาง 100%
+      let syncCleanup = () => {};
+      if (mainChart) {
         const mainTimeScale = mainChart.timeScale();
         const subTimeScale = subChart.timeScale();
-
         let isSyncing = false;
 
         const handleMainChange = (range: LogicalRange | null) => {
-            if (isSyncing || !range) return;
-            isSyncing = true;
-            subTimeScale.setVisibleLogicalRange(range);
-            isSyncing = false;
+          if (isSyncing || !range) return;
+          isSyncing = true;
+          subTimeScale.setVisibleLogicalRange(range);
+          isSyncing = false;
         };
 
         const handleSubChange = (range: LogicalRange | null) => {
-            if (isSyncing || !range) return;
-            isSyncing = true;
-            mainTimeScale.setVisibleLogicalRange(range);
-            isSyncing = false;
+          if (isSyncing || !range) return;
+          isSyncing = true;
+          mainTimeScale.setVisibleLogicalRange(range);
+          isSyncing = false;
         };
 
-        // ลงทะเบียนดักจับการเลื่อนเมาส์ของทั้งสองฝั่ง
         mainTimeScale.subscribeVisibleLogicalRangeChange(handleMainChange);
         subTimeScale.subscribeVisibleLogicalRangeChange(handleSubChange);
 
-        // 🎯 สั่งซิงค์ตำแหน่งปัจจุบันทันทีในฟิลด์กระพริบตาแรก เพื่อให้แท่งเทียนตรงกับแท่ง MACD เป๊ะๆ
         const currentMainRange = mainTimeScale.getVisibleLogicalRange();
         if (currentMainRange) {
-            subTimeScale.setVisibleLogicalRange(currentMainRange);
+          subTimeScale.setVisibleLogicalRange(currentMainRange);
         }
 
-        return () => {
-            mainTimeScale.unsubscribeVisibleLogicalRangeChange(handleMainChange);
-            subTimeScale.unsubscribeVisibleLogicalRangeChange(handleSubChange);
+        syncCleanup = () => {
+          mainTimeScale.unsubscribeVisibleLogicalRangeChange(handleMainChange);
+          subTimeScale.unsubscribeVisibleLogicalRangeChange(handleSubChange);
         };
-    }, [currentIndex, indicators, chartRef]);
+      }
+
+      macdSyncCleanupRef.current = () => {
+        obs.disconnect();
+        syncCleanup();
+      };
+    }
+
+    // 5. UPDATE DATA: ป้อนข้อมูลแท่งเทียน
+    if (macdSeriesRef.current) {
+      if (
+        macdLastLengthRef.current > 0 &&
+        histData.length === macdLastLengthRef.current + 1
+      ) {
+        macdSeriesRef.current.update(histData[histData.length - 1]);
+      } else {
+        macdSeriesRef.current.setData(histData);
+      }
+      macdLastLengthRef.current = histData.length;
+    }
+
+    // 🌟 ห้ามเอา .current ใส่ในวงเล็บนี้เด็ดขาด ป้องกัน ESLint Error
+  }, [indicatorResults, indicators, currentIndex, allData, chartRef]);
 
   // 🌟 Cleanup ตอนสลับหน้าเว็บ
   useEffect(() => {

@@ -24,7 +24,7 @@ const SessionsPage = () => {
     const [sessionName, setSessionName] = useState('');
     const [assetName, setAssetName] = useState('EURUSD');
     const [startingBalance, setStartingBalance] = useState(10000);
-    const [startDate, setStartDate] = useState('2015-01-01'); // 🌟 เริ่มต้นที่ 2015 ตามที่คุณปรับข้อมูล
+    const [startDate, setStartDate] = useState('2015-01-01'); // 🌟 เริ่มต้นที่ 2015
 
     // 1. ดึงข้อมูล (อยู่ใน useEffect)
     useEffect(() => {
@@ -37,13 +37,14 @@ const SessionsPage = () => {
             } catch (error) {
                 console.error("ดึงข้อมูลไม่สำเร็จ:", error);
             }
-        }; loadData();
+        };
+        loadData();
     }, [user?.user_id, refreshTrigger]);
 
     // 2. ฟังก์ชันกดสร้าง Session
     const handleCreateSession = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         // 🌟 เพิ่มคำสั่ง Console.log เพื่อเช็คข้อมูล user_id
         console.log("ข้อมูล User ปัจจุบันใน Zustand:", user);
 
@@ -67,24 +68,15 @@ const SessionsPage = () => {
             });
 
             if (res.ok) {
-                setRefreshTrigger(prev => prev + 1); 
-                setIsModalOpen(false); 
-                setSessionName(''); 
+                setRefreshTrigger(prev => prev + 1);
+                setIsModalOpen(false);
+                setSessionName('');
+                // สามารถสั่งเคลียร์วันที่ด้วยก็ได้ หรือปล่อยให้เป็นค่าเดิม (2015-01-01)
             }
         } catch (error) {
             console.error("สร้างไม่สำเร็จ:", error);
         }
     };
-    <div className="mb-4">
-        <label className="block text-slate-400 mb-2">Start Date</label>
-        <input 
-            type="date" 
-            value={startDate} 
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
-            required
-        />
-    </div>
 
     // 3. ฟังก์ชันกดลบ Session
     const handleDeleteSession = async (sessionId: number) => {
@@ -123,7 +115,7 @@ const SessionsPage = () => {
                             <h3 className="text-xl font-bold text-white">{session.session_name}</h3>
                             <button
                                 onClick={() => handleDeleteSession(session.session_id)}
-                                className="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" // 🌟 แสดงปุ่มลบเมื่อเอาเมาส์มาชี้
+                                className="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                 title="ลบเซสชัน"
                             >
                                 🗑️
@@ -180,6 +172,21 @@ const SessionsPage = () => {
                                     required
                                 />
                             </div>
+
+                            {/* 🌟 ย้ายกล่อง Start Date มาไว้ตรงนี้ (ใน Form) 🌟 */}
+                            <div>
+                                <label className="block text-slate-400 mb-2">Start Date (วันที่เริ่มกราฟ)</label>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                                    min="2015-01-01" 
+                                    max="2020-12-31" 
+                                    required
+                                />
+                            </div>
+
                             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold mt-6 transition-colors text-lg shadow-lg">
                                 START REPLAY
                             </button>
