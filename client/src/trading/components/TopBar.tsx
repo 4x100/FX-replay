@@ -2,6 +2,7 @@ import React from 'react';
 import type { IndicatorConfig } from '../../IndicatorPanel';
 import { IndicatorRow } from '../../IndicatorPanel';
 
+
 interface TopBarProps {
     sessionId: number;
     timeframe: string;
@@ -126,7 +127,7 @@ export function TopBar({
                     ⏭ NEXT
                 </button>
                 <div className="flex bg-[#1e222d] rounded ml-2 shadow-sm border border-[#2a2e39] overflow-hidden">
-                    {[{ label: '1x', ms: 1000 }, { label: '2x', ms: 500 }, { label: '5x', ms: 100 }].map(({ label, ms }, i) => (
+                    {[{ label: '1x', ms: 1000 }, { label: '2x', ms: 500 }, { label: '5x', ms: 100 },{ label: '10x' , ms: 10}].map(({ label, ms }, i) => (
                         <button key={label} onClick={() => onSpeedChange(ms)}
                             className={`px-3 py-1 text-xs transition-colors ${i === 1 ? 'border-l border-r border-[#2a2e39]' : ''} ${speed === ms ? 'bg-gray-600 text-white font-bold' : 'hover:bg-[#2a2e39]'}`}>
                             {label}

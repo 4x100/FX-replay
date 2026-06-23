@@ -37,20 +37,34 @@ export function usePositions({
   const [openPositions, setOpenPositions] = useState<Position[]>([]);
   const [tradeHistory, setTradeHistory] = useState<Position[]>([]);
   const [tradeMarkers, setTradeMarkers] = useState<SeriesMarker<Time>[]>([]);
-  const [balance, setBalance] = useState(10000);
+  
+  // 🌟 แก้ไขจุดที่ 1: ตั้งค่าเริ่มต้นเป็น 0 และเพิ่มตัวแปรเก็บเงินทุนเริ่มต้น
+  const [balance, setBalance] = useState<number>(0);
+  const [startingBalance, setStartingBalance] = useState<number>(0);
 
   const [editingPosId, setEditingPosId] = useState<string | null>(null);
   const [editTp, setEditTp] = useState(0);
   const [editSl, setEditSl] = useState(0);
 
-  // ─── โหลดประวัติจาก DB เมื่อเข้าเซสชัน ──────────────────────────────────
+  // 🌟 แก้ไขจุดที่ 2: โหลดข้อมูล Session และประวัติจาก DB แบบเชื่อมโยงกัน
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(
+        // 1. 📦 ดึงข้อมูล Session ปัจจุบันเพื่อเอาเงินทุนเริ่มต้น (Starting Balance)
+        let initialFund = 0;
+        const sessionRes = await fetch(`https://fx-replay-backend.onrender.com/api/sessions/${sessionId}`);
+        console.log(startingBalance)
+        if (sessionRes.ok) {
+            const sessionData = await sessionRes.json();
+            initialFund = Number(sessionData.starting_balance || 0);
+            setStartingBalance(initialFund);
+        }
+
+        // 2. 📊 ดึงประวัติการเทรดของ Session นี้
+        const tradeRes = await fetch(
           `https://fx-replay-backend.onrender.com/api/trades?session_id=${sessionId}`,
         );
-        const dbTrades: DBTrade[] = await res.json();
+        const dbTrades: DBTrade[] = await tradeRes.json();
 
         if (dbTrades?.length > 0) {
           const loaded: Position[] = dbTrades.map((t) => ({
@@ -65,13 +79,21 @@ export function usePositions({
             sl: Number(t.sl_price || 0),
           }));
           setTradeHistory(loaded);
-          setBalance(10000 + loaded.reduce((sum, t) => sum + t.pnl, 0));
+          
+          // ✅ เอาเงินทุนเริ่มต้น + กำไร/ขาดทุนสะสมที่เทรดไปแล้ว
+          setBalance(initialFund + loaded.reduce((sum, t) => sum + t.pnl, 0));
+        } else {
+          // ✅ ถ้าเพิ่งสร้าง Session ใหม่ ยังไม่มีประวัติ ให้แสดงเงินทุนเริ่มต้นเลย
+          setBalance(initialFund);
         }
       } catch (err) {
-        console.error("Load trade history failed:", err);
+        console.error("Load data failed:", err);
       }
     };
-    fetchHistory();
+    
+    if (sessionId) {
+        fetchData();
+    }
   }, [sessionId]);
 
   // ─── อัปเดตชื่อ Price Line ด้วย PnL แบบ Real-time ────────────────────────
@@ -85,7 +107,6 @@ export function usePositions({
       const line = priceLinesRef.current.get(pos.id)?.entry;
       if (line) {
         try {
-          // 🌟 ใส่ try-catch กันเหนียว! ถ้ากราฟโดนทำลายไปแล้ว จะได้ไม่พ่น Error
           line.applyOptions({
             title: `${pos.type} ${pos.lotSize}  ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
           });
@@ -112,18 +133,17 @@ export function usePositions({
       const lines = priceLinesRef.current.get(id);
       if (lines && seriesRef.current) {
         try {
-          // 🌟 ใส่ try-catch ป้องกันตอนถอนเส้น
           seriesRef.current.removePriceLine(lines.entry);
           if (lines.tp) seriesRef.current.removePriceLine(lines.tp);
           if (lines.sl) seriesRef.current.removePriceLine(lines.sl);
         } catch {
-          //sds
+          //
         }
-
         priceLinesRef.current.delete(id);
       }
 
       setOpenPositions((prev) => prev.filter((p) => p.id !== id));
+      // ✅ ตรงนี้ของคุณเขียนไว้ดีแล้ว ให้มันเอาของเดิมไปบวก/ลบ ได้เลยไม่ต้องแก้
       setBalance((b) => b + finalPnL);
       setTradeHistory((th) => [closed, ...th]);
 
@@ -266,7 +286,6 @@ export function usePositions({
     if (!lines) return;
 
     try {
-      // 🌟 ป้องกัน Error ถ้าระหว่าง Edit มีการสลับ Timeframe
       if (editTp > 0) {
         if (lines.tp) lines.tp.applyOptions({ price: editTp });
         else
@@ -308,7 +327,6 @@ export function usePositions({
       const lines = priceLinesRef.current.get(editingPosId);
       if (lines) {
         try {
-          // 🌟 ป้องกันตอนกดยกเลิก
           if (pos.tp > 0) lines.tp?.applyOptions({ price: pos.tp });
           else if (lines.tp) {
             seriesRef.current.removePriceLine(lines.tp);

@@ -24,7 +24,7 @@ const SessionsPage = () => {
     const [sessionName, setSessionName] = useState('');
     const [assetName, setAssetName] = useState('EURUSD');
     const [startingBalance, setStartingBalance] = useState(10000);
-    const [startDate, setStartDate] = useState('2015-01-01'); // 🌟 เริ่มต้นที่ 2015
+    const [startDate, setStartDate] = useState('2017-01-01'); // 🌟 เริ่มต้นที่ 2017
 
     // 1. ดึงข้อมูล (อยู่ใน useEffect)
     useEffect(() => {
@@ -181,7 +181,7 @@ const SessionsPage = () => {
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                                    min="2015-01-01" 
+                                    min="2017-01-01" 
                                     max="2020-12-31" 
                                     required
                                 />
